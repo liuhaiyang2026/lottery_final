@@ -3,66 +3,52 @@ import sqlite3
 import random
 from flask import Flask, render_template
 
-# 导入你项目中的其他模块
-from database import init_db
-from scraper import fetch_latest
-from predictor import get_ai_prediction
-from config import get_detail
-
 app = Flask(__name__)
 
+# --- 1. 配置模块 (2026年生肖五行) ---
+ZODIAC_2026 = {
+    "马": [1, 13, 25, 37, 49], "蛇": [2, 14, 26, 38], "龙": [3, 15, 27, 39],
+    "兔": [4, 16, 28, 40], "虎": [5, 17, 29, 41], "牛": [6, 18, 30, 42],
+    "鼠": [7, 19, 31, 43], "猪": [8, 20, 32, 44], "狗": [9, 21, 33, 45],
+    "鸡": [10, 22, 34, 46], "猴": [11, 23, 35, 47], "羊": [12, 24, 36, 48]
+}
+
+def get_detail(num):
+    num = int(num)
+    zodiac = next((k for k, v in ZODIAC_2026.items() if num in v), "未知")
+    return f"{zodiac}"
+
+# --- 2. 数据库模块 (适配 Render Disk) ---
+DB_DIR = '/opt/render/project/src/data' if os.environ.get('RENDER') else 'data'
+DB_PATH = os.path.join(DB_DIR, 'lottery.db')
+
+def init_db():
+    if not os.path.exists(DB_DIR):
+        os.makedirs(DB_DIR)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, nums TEXT, sp INTEGER)")
+    conn.close()
+
+# --- 3. 路由逻辑 ---
 @app.route('/')
 def index():
-    # 1. 初始化数据库（确保在 Render Disk 上创建文件）
-    try:
-        init_db()
-    except Exception as e:
-        print(f"数据库初始化失败: {e}")
-
-    # 2. 获取最新数据（加入防御性保护）
-    data = None
-    try:
-        data = fetch_latest()
-    except Exception as e:
-        print(f"爬虫模块 fetch_latest 报错: {e}")
-
-    # 3. 核心修复：如果 data 为 None 或报错，提供一套 2026 默认数据，防止网页崩溃
-    if not data:
-        data = {
-            "date": "2026年数据获取中",
-            "nums": [1, 13, 25, 37, 49, 10], # 示例平码
-            "sp": 8                          # 示例特码
-        }
-
-    # 4. 获取 AI 预测结果
-    try:
-        pred = get_ai_prediction()
-    except Exception as e:
-        print(f"AI 预测模块报错: {e}")
-        pred = {"main": [5, 15, 25, 35, 45, 48], "special": 9}
-
-    # 5. 结合 config.py 为号码匹配生肖和五行
-    latest_info = []
-    try:
-        for n in data['nums']:
-            latest_info.append({"n": n, "d": get_detail(n)})
-        
-        sp_info = {"n": data['sp'], "d": get_detail(data['sp'])}
-    except Exception as e:
-        print(f"详情转换报错: {e}")
-        latest_info = [{"n": 0, "d": "数据错误"}]
-        sp_info = {"n": 0, "d": "数据错误"}
-
-    # 6. 渲染到 HTML 模板
-    return render_template(
-        'index.html', 
-        date=data['date'], 
-        latest=latest_info, 
-        sp=sp_info, 
-        pred=pred
-    )
+    init_db()
+    
+    # 模拟最新开奖 (后续可扩展 scraper)
+    data = {"date": "2026-03-09", "nums": [5, 12, 23, 34, 45, 48], "sp": 8}
+    
+    # 模拟 AI 预测
+    pred = {
+        "main": sorted(random.sample(range(1, 50), 6)),
+        "special": random.randint(1, 49)
+    }
+    
+    # 详情转换
+    latest_info = [{"n": n, "d": get_detail(n)} for n in data['nums']]
+    sp_info = {"n": data['sp'], "d": get_detail(data['sp'])}
+    
+    return render_template('index.html', date=data['date'], latest=latest_info, sp=sp_info, pred=pred)
 
 if __name__ == "__main__":
-    # 自动识别 Render 环境端口
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
